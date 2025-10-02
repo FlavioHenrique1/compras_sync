@@ -1,13 +1,26 @@
-from atualizador import AtualizadorPlanilhaCompras
+import os
+from dotenv import load_dotenv
+from login import AtualizadorPlanilhaCompras
+from interacao import InteracaoSistema
 
-def main():
-    url = "https://fa-euld-saasfaprod1.fa.ocs.oraclecloud.com/fscmUI/faces/FuseWelcome?_adf.ctrl-state=bup08swrk_118"  # Substitua pela URL real
-    bot = AtualizadorPlanilhaCompras(headless=False)
+# Carregar variáveis do arquivo .env
+load_dotenv()
 
-    try:
-        bot.atualizar_planilha(url)
-    finally:
-        bot.fechar()
+URL = os.getenv("URL")
+EMAIL = os.getenv("EMAIL")
+SENHA = os.getenv("SENHA")
 
 if __name__ == "__main__":
-    main()
+    app = AtualizadorPlanilhaCompras(headless=False)
+
+    if app.fazer_login(URL, EMAIL, SENHA):
+        print("teste")
+
+        # Agora passa o driver logado para a nova classe
+        interacao = InteracaoSistema(app.driver)
+        print("teste1")
+        interacao.acessar_pagina_requisicoes()
+        print("teste2")
+        interacao.exemplo_interacao()
+
+    app.fechar()

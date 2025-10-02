@@ -4,21 +4,22 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+
 class AtualizadorPlanilhaCompras(Navegador):
     def __init__(self, headless=False):
         super().__init__(headless=headless)
 
-    def atualizar_planilha(self, url_planilha, email_usuario, senha_usuario):
-        self.abrir_pagina(url_planilha)
-
+    def fazer_login(self, url, email_usuario, senha_usuario):
+        """Realiza apenas o login"""
         try:
+            self.abrir_pagina(url)
+
             # === 1. Clicar no botão SSO ===
             botao = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.ID, "ssoBtn"))
             )
             botao.click()
-            print("✅ Botão 'ssoBtn' clicado")
-            time.sleep(3)
+            time.sleep(4)
 
             # === 2. Preencher e-mail ===
             campo_email = WebDriverWait(self.driver, 10).until(
@@ -26,15 +27,13 @@ class AtualizadorPlanilhaCompras(Navegador):
             )
             campo_email.clear()
             campo_email.send_keys(email_usuario)
-            print("✅ E-mail inserido")
             time.sleep(3)
 
-            # Clicar em "Avançar"
             botao_avancar = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.ID, "idSIButton9"))
             )
             botao_avancar.click()
-            time.sleep(2)
+            time.sleep(3)
 
             # === 3. Preencher senha ===
             campo_senha = WebDriverWait(self.driver, 10).until(
@@ -42,29 +41,48 @@ class AtualizadorPlanilhaCompras(Navegador):
             )
             campo_senha.clear()
             campo_senha.send_keys(senha_usuario)
-            print("✅ Senha inserida")
             time.sleep(3)
 
-            # Clicar em "Entrar"
             botao_entrar = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.ID, "idSIButton9"))
             )
             botao_entrar.click()
             time.sleep(3)
-                        # Clicar em "Entrar"
-            botao_entrar1 = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.ID, "idSIButton9"))
-            )
-            botao_entrar1.click()
-            time.sleep(3)
+
+            # Tela extra "Manter conectado"
+            try:
+                botao_entrar1 = WebDriverWait(self.driver, 5).until(
+                    EC.element_to_be_clickable((By.ID, "idSIButton9"))
+                )
+                botao_entrar1.click()
+                time.sleep(3)
+            except:
+                pass
 
             print("✅ Login realizado com sucesso!")
-
-            self.abrir_pagina("https://fa-euld-saasfaprod1.fa.ocs.oraclecloud.com/fscmUI/faces/FuseWelcome?_adf.ctrl-state=lekdds9ts_1&_adf.no-new-window-redirect=true&_afrLoop=45748418842188474&_afrWindowMode=2&_afrWindowId=null&_afrFS=16&_afrMT=screen&_afrMFW=1366&_afrMFH=633&_afrMFDW=1366&_afrMFDH=768&_afrMFC=8&_afrMFCI=0&_afrMFM=0&_afrMFR=96&_afrMFG=0&_afrMFS=0&_afrMFO=0")
-
-
+            return True
 
         except Exception as e:
-            print("⚠️ Erro durante a automação:", e)
+            print("⚠️ Erro durante login:", e)
+            return False
 
-        print("Título da página:", self.driver.title)
+    def navegar_para_requisicoes(self):
+        """Acessa Procurement > Purchase Requisitions"""
+        try:
+            menu_procurement = WebDriverWait(self.driver, 15).until(
+                EC.element_to_be_clickable((By.ID, "groupNode_procurement"))
+            )
+            menu_procurement.click()
+            time.sleep(3)
+
+            menu_requisitions = WebDriverWait(self.driver, 15).until(
+                EC.element_to_be_clickable((By.ID, "itemNode_my_information_purchase_requisitions_0"))
+            )
+            menu_requisitions.click()
+            time.sleep(3)
+
+            print("✅ Página de Purchase Requisitions aberta!")
+            return True
+        except Exception as e:
+            print("⚠️ Erro na navegação:", e)
+            return False
