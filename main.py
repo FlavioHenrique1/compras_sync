@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 from login import AtualizadorPlanilhaCompras
 from interacao import InteracaoSistema
+from extrator import ExtratorTabela
+from salvar_csv import salvar_csv
 import csv
 
 # Carregar variáveis do arquivo .env
