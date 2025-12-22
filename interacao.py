@@ -35,6 +35,7 @@ class InteracaoSistema(Navegador):
             botaoCompras = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.ID, "clusters-right-nav"))
             )
+            print("clicar botão de compras")
             botaoCompras.click()
             time.sleep(3)
 

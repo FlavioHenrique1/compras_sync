@@ -1,179 +1,204 @@
 import time
+import pandas as pd
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from salvar_csv import salvar_csv
+from leitor_excel import ler_rqs_excel
+import os
+
 
 class ExtratorTabela:
-    def __init__(self, driver, tempo_scroll=3):
+    def __init__(self, driver, tempo_scroll=2, timeout_wait=20):
         self.driver = driver
-        self.tempo_scroll = tempo_scroll  # tempo para o sistema carregar a tabela após o scroll
+        self.tempo_scroll = tempo_scroll
+        self.timeout_wait = timeout_wait
 
+        # IDs fixos informados por você
+        self.CAMPO_PESQUISA_RQ = "pt1:_FOr1:1:_FONSr2:0:MAnt2:1:pt1:r1:0:ap1:r1:0:q1:value20"
+        self.BOTAO_PESQUISAR = "pt1:_FOr1:1:_FONSr2:0:MAnt2:1:pt1:r1:0:ap1:r1:0:q1::search"
+        self.LINK_RQ_FILTRADA = "//a[contains(@id, ':cl5')]"
+
+        # XPath do botão Voltar (o mesmo que você já usava)
+        self.voltar_btn_xpath = "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[1]/div/div[2]/div/div/div/div/div/table/tbody/tr/td[2]/div/div/div[1]/div/div[1]/div[3]/div/div[1]/div[1]/table/tbody/tr/td/div/a"
+
+    # ======================================================
+    # 🔎 Pesquisa a RQ no campo e abre o resultado filtrado
+    # ======================================================
+    def pesquisar_e_abrir_rq(self, numero_rq):
+        print(f"🔍 Pesquisando RQ: {numero_rq}")
+
+        # Campo de pesquisa
+        campo = WebDriverWait(self.driver, self.timeout_wait).until(
+            EC.presence_of_element_located((By.XPATH, "//input[contains(@id,'value20')]"))
+        )
+
+        # Setar valor via JS (ADF safe)
+        self.driver.execute_script(
+            """
+            arguments[0].focus();
+            arguments[0].value = '';
+            arguments[0].value = arguments[1];
+            arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
+            arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+            arguments[0].dispatchEvent(new Event('blur', { bubbles: true }));
+            """,
+            campo,
+            str(numero_rq)
+        )
+
+        # Clicar no botão pesquisar
+        botao = WebDriverWait(self.driver, self.timeout_wait).until(
+            EC.element_to_be_clickable((By.ID, self.BOTAO_PESQUISAR))
+        )
+        self.driver.execute_script("arguments[0].click();", botao)
+
+        # 🔴 ADF precisa de tempo para renderizar a linha
+        time.sleep(2)
+
+        # Localiza o link EXATO da RQ pelo texto
+        rq_link = WebDriverWait(self.driver, self.timeout_wait).until(
+            EC.presence_of_element_located((
+                By.XPATH,
+                f"//a[normalize-space()='{numero_rq}']"
+            ))
+        )
+
+        # Scroll até o link (ESSENCIAL)
+        self.driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'center'});",
+            rq_link
+        )
+        time.sleep(0.5)
+
+        # Clique via JS (ADF safe)
+        self.driver.execute_script("arguments[0].click();", rq_link)
+
+        print(f"➡️ Entrou na RQ {numero_rq}")
+
+
+
+    # ======================================================
+    # 📥 EXTRAÇÃO PRINCIPAL (via Excel)
+    # ======================================================
     def extrair(self):
         resultados = []
 
-        # Espera a tabela carregar pelo menos uma linha
-        WebDriverWait(self.driver, 20).until(
-            EC.presence_of_element_located((By.XPATH, "//a[contains(@id, ':cl5')]"))
-        )
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        caminho_excel = os.path.join(base_dir, "RQ.xlsx")
 
-        # XPath do botão de voltar na página de detalhes
-        voltar_btn_xpath = "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[1]/div/div[2]/div/div/div/div/div/table/tbody/tr/td[2]/div/div/div[1]/div/div[1]/div[3]/div/div[1]/div[1]/table/tbody/tr/td/div/a"
+        lista_rqs = ler_rqs_excel(caminho_excel)
 
-        i = 0
-        while True:
-            print(i)
-            time.sleep(2)
-            # Reobtém todos os links visíveis de RQ
-            rq_links = self.driver.find_elements(By.XPATH, "//a[contains(@id, ':cl5')]")
-            time.sleep(2)
-            if i >= len(rq_links):
-                # Se ainda houver mais linhas no scroll, rola a tabela para baixo
-                tabela_xpath = "//div[contains(@id, 'allMyReqsVCResult::_ATp')]"
-                tabela = self.driver.find_element(By.XPATH, tabela_xpath)
-                self.driver.execute_script("arguments[0].scrollTop += 300;", tabela)
-                time.sleep(self.tempo_scroll)  # espera o sistema carregar novas linhas
-                rq_links = self.driver.find_elements(By.XPATH, "//a[contains(@id, ':cl5')]")
-                if i >= len(rq_links):
-                    break  # não há mais linhas
+        print(f"📊 Total de RQs no Excel: {len(lista_rqs)}")
+
+        for rq_numero in lista_rqs:
             try:
-                rq_link = rq_links[i]
-                rq_numero = rq_link.text.strip()
-                print(f"🔹 Processando RQ: {rq_numero}")
+                self.pesquisar_e_abrir_rq(rq_numero)
 
-                # Clica na RQ usando JavaScript
-                self.driver.execute_script("""
-                    var evt = document.createEvent('MouseEvents');
-                    evt.initMouseEvent('click', true, true, window, 1, 0, 0, 0, 0,
-                                       false, false, false, false, 0, null);
-                    arguments[0].dispatchEvent(evt);
-                """, rq_link)
+                # Aguarda tela de detalhe
+                WebDriverWait(self.driver, self.timeout_wait).until(
+                    EC.presence_of_element_located((By.XPATH, "//h1"))
+                )
 
-                # Aguarda carregar a página de detalhes
-                time.sleep(self.tempo_scroll)
-                # Extrai Numero da RQ
-                NRQ = WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div[1]/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[1]/div/div[2]/div/div/div/div/div/table/tbody/tr/td[2]/div/div/div[1]/div/div[1]/div[1]/div/div/div/div[1]/table/tbody/tr/td[2]/div/h1")
-                    )
-                ).text.strip()
+                # =============================
+                # Função segura de texto
+                # =============================
+                def safe_text(xpath, nome="campo"):
+                    try:
+                        el = WebDriverWait(self.driver, 6).until(
+                            EC.presence_of_element_located((By.XPATH, xpath))
+                        )
+                        return el.text.strip()
+                    except Exception:
+                        print(f"⚠️ Não encontrou {nome}")
+                        return ""
 
-                # Extrai descrição
-                descricao = WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[1]/div/table/tbody/tr/td/table/tbody/tr[4]/td[2]")
-                    )
-                ).text.strip()
+                # =============================
+                # EXTRAÇÃO (XPATHS ORIGINAIS)
+                # =============================
+                
+                TipoRQ = safe_text(
+                    "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[3]/div/table/tbody/tr/td/table/tbody/tr[5]/td[2]/span",
+                    "TTipoRQ"
+                )
 
-                # Extrai nome do comprador
-                comprador = WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[7]/div/div[2]/div/div[1]/div/table/tbody/tr/td[2]/div/table/tbody/tr/td/table/tbody/tr[10]/td[2]/span")
-                    )
-                ).text.strip().replace("\n", "").replace("Mais...", "").strip()
+                Justificativa = safe_text(
+                    "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[2]/div/table/tbody/tr/td/table/tbody/tr[4]/td[2]",
+                    "Justificativa"
+                )
 
-                # Extrai valor
-                valorRQ = WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div[1]/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[3]/div/table/tbody/tr/td/table/tbody/tr[2]/td[2]")
-                    )
-                ).text.strip()
+                LocalEntrega = safe_text(
+                    "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[7]/div/div[2]/div/div[1]/div/table/tbody/tr/td[1]/table/tbody/tr/td[2]/div/table/tbody/tr/td/table/tbody/tr[6]/td[2]/a",
+                    "LocalEntrega"
+                )
 
-                # Extrai status
-                statusRQ = WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[2]/div/table/tbody/tr/td/table/tbody/tr[3]/td[2]")
-                    )
-                ).text.strip()
+                CC = safe_text(
+                    "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[7]/div/div[2]/div/div[3]/div[2]/div/div[2]/div[2]/div/div[2]/table/tbody/tr/td[3]/span/span/div/table/tbody/tr/td[1]/span/span",
+                    "CC"
+                )
 
-                # Extrai data de criação
-                dataCriaRQ = WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[2]/div/table/tbody/tr/td/table/tbody/tr[2]/td[2]")
-                    )
-                ).text.strip()
+                descricao = safe_text(
+                    "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[1]/div/table/tbody/tr/td/table/tbody/tr[4]/td[2]",
+                    "descricao"
+                )
 
-                # Extrai UN de requisição
-                UNdereq	 = WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[1]/div/table/tbody/tr/td/table/tbody/tr[2]/td[2]")
-                    )
-                ).text.strip()
+                comprador = safe_text(
+                    "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[7]/div/div[2]/div/div[1]/div/table/tbody/tr/td[2]/div/table/tbody/tr/td/table/tbody/tr[10]/td[2]/span",
+                    "comprador"
+                ).replace("\n", "").replace("Mais...", "").strip()
 
-                # Extrai Local de Faturamento
-                LocFat = WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[3]/div/table/tbody/tr/td/table/tbody/tr[9]/td[2]/span")
-                    )
-                ).text.strip()
+                valorRQ = safe_text(
+                    "/html/body/div[1]/form/div[1]/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[3]/div/table/tbody/tr/td/table/tbody/tr[2]/td[2]",
+                    "valorRQ"
+                )
 
-                # Extrai Informado por
-                InforPor =WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div[1]/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[1]/div/table/tbody/tr/td/table/tbody/tr[3]/td[2]/span")
-                    )
-                ).text.strip()
+                statusRQ = safe_text(
+                    "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[2]/div/table/tbody/tr/td/table/tbody/tr[3]/td[2]",
+                    "statusRQ"
+                )
 
-                # Extrai Local para Entrega
-                LocalEntrega =WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div[1]/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[7]/div/div[2]/div/div[1]/div/table/tbody/tr/td[1]/table/tbody/tr/td[2]/div/table/tbody/tr/td/table/tbody/tr[6]/td[2]/a")
-                    )
-                ).text.strip()
+                dataCriaRQ = safe_text(
+                    "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[3]/table/tbody/tr/td[2]/div/table/tbody/tr/td/table/tbody/tr[2]/td[2]",
+                    "dataCriaRQ"
+                )
 
-                # Extrai centro de custo
-                CentroC =WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, "/html/body/div[1]/form/div[1]/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[2]/div/div/div/div/div/div/div/div/div[7]/div/div[2]/div/div[3]/div[2]/div/div[2]/div[2]/div/div[2]/table/tbody/tr/td[3]/span/span/div/table/tbody/tr/td[1]/span/span")
-                    )
-                ).text.strip()
-
-                # Salva resultado
                 resultados.append({
                     "RQ": rq_numero,
                     "Descricao": descricao,
                     "Comprador": comprador,
-                    "valor": valorRQ,
-                    "statusRQ": statusRQ,
-                    "dataCriaRQ": dataCriaRQ,
-                    "UNdereq": UNdereq,
-                    "LocFat":LocFat,
-                    "InforPor":InforPor,
-                    "LocalEntrega":LocalEntrega,
-                    "CentroC":CentroC,
-                    "NRQ":NRQ
+                    "Valor": valorRQ,
+                    "Status": statusRQ,
+                    "DataCriacao": dataCriaRQ,
+                    "TipoRQ": TipoRQ,
+                    "Justificativa": Justificativa,
+                    "LocalEntrega": LocalEntrega,
+                    "CC": CC
                 })
-                print(f"✅ Extraído: {rq_numero} - {descricao} - {comprador} - {valorRQ} - {statusRQ} - {dataCriaRQ} - {CentroC} - {LocalEntrega}")
 
-                # Volta para a lista
-                voltar_btn = self.driver.find_element(By.XPATH, voltar_btn_xpath)
-                time.sleep(2)
-                self.driver.execute_script("arguments[0].click();", voltar_btn)
-                WebDriverWait(self.driver, 20).until(
-                    EC.presence_of_all_elements_located(
-                        (By.XPATH, "//a[contains(@id, ':cl5')]")
-                    )
+                print(f"✅ Extraído com sucesso: {rq_numero}")
+
+                # =============================
+                # 🔙 VOLTAR PARA LISTA
+                # =============================
+                try:
+                    voltar = self.driver.find_element(By.XPATH, self.voltar_btn_xpath)
+                    self.driver.execute_script("arguments[0].click();", voltar)
+                except Exception:
+                    self.driver.back()
+
+                WebDriverWait(self.driver, self.timeout_wait).until(
+                    EC.presence_of_element_located((By.ID, self.CAMPO_PESQUISA_RQ))
                 )
+
                 time.sleep(self.tempo_scroll)
 
-                i += 1
-
             except Exception as e:
-                print(f"⚠️ Erro ao processar {rq_numero}: {e}")
-                # Tenta voltar mesmo em caso de erro
-                try:
-                    voltar_btn = self.driver.find_element(By.XPATH, voltar_btn_xpath)
-                    self.driver.execute_script("arguments[0].click();", voltar_btn)
-                    WebDriverWait(self.driver, 20).until(
-                        EC.presence_of_all_elements_located(
-                            (By.XPATH, "//a[contains(@id, ':cl5')]")
-                        )
-                    )
-                    time.sleep(self.tempo_scroll)
-                except:
-                    pass
-                i += 1
+                print(f"❌ Erro ao processar RQ {rq_numero}: {e}")
+                salvar_csv(resultados)
+                continue
 
+        salvar_csv(resultados)
+        print("💾 CSV final salvo com sucesso")
 
-        salvar_csv(resultados)  # <<< Salva o CSV
         return resultados
