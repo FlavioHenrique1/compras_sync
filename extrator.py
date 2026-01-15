@@ -24,7 +24,7 @@ class ExtratorTabela:
         self.voltar_btn_xpath = "/html/body/div[1]/form/div/div/div/div[1]/div/div/div/div[3]/div/div[2]/div/div/div/div/div/div/div/div[2]/div/div[1]/div/div/div/div[1]/div[1]/div/div/div[1]/div/div[1]/table/tbody/tr/td[1]/div/div/div/div/div[1]/div/div/div/div/div/div[1]/div/div[2]/div/div/div/div/div/table/tbody/tr/td[2]/div/div/div[1]/div/div[1]/div[3]/div/div[1]/div[1]/table/tbody/tr/td/div/a"
 
     # ======================================================
-    # 🔎 Pesquisa a RQ no campo e abre o resultado filtrado
+    # Pesquisa a RQ no campo e abre o resultado filtrado
     # ======================================================
     def pesquisar_e_abrir_rq(self, numero_rq):
         print(f"🔍 Pesquisando RQ: {numero_rq}")
@@ -54,7 +54,7 @@ class ExtratorTabela:
         )
         self.driver.execute_script("arguments[0].click();", botao)
 
-        # 🔴 ADF precisa de tempo para renderizar a linha
+        #  ADF precisa de tempo para renderizar a linha
         time.sleep(2)
 
         # Localiza o link EXATO da RQ pelo texto
@@ -80,7 +80,7 @@ class ExtratorTabela:
 
 
     # ======================================================
-    # 📥 EXTRAÇÃO PRINCIPAL (via Excel)
+    #  EXTRAÇÃO PRINCIPAL (via Excel)
     # ======================================================
     def extrair(self):
         resultados = []
@@ -170,6 +170,7 @@ class ExtratorTabela:
                     "Valor": valorRQ,
                     "Status": statusRQ,
                     "DataCriacao": dataCriaRQ,
+                    "NRQ": "",
                     "TipoRQ": TipoRQ,
                     "Justificativa": Justificativa,
                     "LocalEntrega": LocalEntrega,
@@ -179,7 +180,7 @@ class ExtratorTabela:
                 print(f"✅ Extraído com sucesso: {rq_numero}")
 
                 # =============================
-                # 🔙 VOLTAR PARA LISTA
+                # VOLTAR PARA LISTA
                 # =============================
                 try:
                     voltar = self.driver.find_element(By.XPATH, self.voltar_btn_xpath)
